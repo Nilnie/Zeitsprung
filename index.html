@@ -285,42 +285,94 @@ function toast(msg){
   document.body.appendChild(t); setTimeout(()=>t.remove(),2600);
 }
 
-/* ---------------- iTunes-Hörproben (JSONP, kein Login) ---------------- */
+/* ---------------- Hörproben (JSONP, kein Login) ----------------
+   Zwei unabhängige Quellen: zuerst iTunes, bei Fehler oder fehlendem Treffer Deezer.
+   Fällt eine Quelle mit Netzwerkfehler aus, wird sie eine Weile übersprungen,
+   statt sie mit weiteren Anfragen zu bombardieren (iTunes drosselt bei ca. 20/min). */
 let jsonpN = 0;
-function jsonp(url){
+function jsonp(url, ms=7000){
   return new Promise((res,rej)=>{
     const cb = "__zs_cb"+(jsonpN++);
     const sc = document.createElement("script");
-    const timer = setTimeout(()=>{cleanup();rej(new Error("timeout"));},9000);
-    function cleanup(){ clearTimeout(timer); delete window[cb]; sc.remove(); }
-    window[cb] = data=>{cleanup();res(data);};
-    sc.onerror = ()=>{cleanup();rej(new Error("network"));};
+    let done = false;
+    const timer = setTimeout(()=>{cleanup();rej(new Error("timeout"));},ms);
+    function cleanup(){
+      done = true; clearTimeout(timer); sc.remove();
+      window[cb] = ()=>{};               // späte Antworten ins Leere laufen lassen statt Fehler
+      setTimeout(()=>{ try{ delete window[cb]; }catch(e){} }, 60000);
+    }
+    window[cb] = data=>{ if(done) return; cleanup(); res(data); };
+    sc.onerror = ()=>{ if(done) return; cleanup(); rej(new Error("network")); };
     sc.src = url + (url.includes("?")?"&":"?") + "callback=" + cb;
     document.head.appendChild(sc);
   });
 }
+
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\(.*?\)|\[.*?\]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+const mainArtistOf = song => song.artist.split(/ & | feat\. | x /i)[0];
+const cleanTitle = t => t.replace(/\(.*?\)/g,"").trim();
+
+const SOURCES = [
+  { name:"iTunes",
+    async search(song){
+      const term = encodeURIComponent(mainArtistOf(song)+" "+cleanTitle(song.title));
+      const data = await jsonp(`https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=15&country=DE`);
+      return (data.results||[]).filter(r=>r.previewUrl).map(r=>({
+        artist:r.artistName||"", title:r.trackName||"", extra:r.collectionName||"",
+        url:r.previewUrl, cover:(r.artworkUrl100||"").replace("100x100","300x300"), link:r.trackViewUrl||""}));
+    }},
+  { name:"Deezer",
+    async search(song){
+      const q = encodeURIComponent(`artist:"${mainArtistOf(song)}" track:"${cleanTitle(song.title)}"`);
+      let data = await jsonp(`https://api.deezer.com/search?q=${q}&limit=15&output=jsonp`);
+      if(data && data.error) throw new Error("network");
+      if(!data || !(data.data||[]).length){   // strenge Suche ohne Treffer -> freie Suche
+        const q2 = encodeURIComponent(mainArtistOf(song)+" "+cleanTitle(song.title));
+        data = await jsonp(`https://api.deezer.com/search?q=${q2}&limit=15&output=jsonp`);
+        if(data && data.error) throw new Error("network");
+      }
+      return ((data&&data.data)||[]).filter(r=>r.preview).map(r=>({
+        artist:(r.artist&&r.artist.name)||"", title:r.title_short||r.title||"", extra:(r.album&&r.album.title)||"",
+        url:r.preview, cover:(r.album&&(r.album.cover_medium||r.album.cover))||"", link:r.link||""}));
+    }}
+];
+const sourceDownUntil = {};   // Quelle -> Zeitpunkt, bis zu dem sie übersprungen wird
+let lastLoadErrors = [];      // für die Anzeige, falls gar nichts klappt
+
+function scoreCandidate(song, r){
+  const na = norm(mainArtistOf(song)), nt = norm(song.title);
+  const ra = norm(r.artist), rt = norm(r.title);
+  let s=0;
+  if(ra && (ra.includes(na)||na.includes(ra))) s+=3;
+  if(rt===nt) s+=4; else if(rt && (rt.startsWith(nt)||nt.startsWith(rt))) s+=2; else if(rt.includes(nt)) s+=1;
+  if(/karaoke|tribute|cover|instrumental|live|remix|made famous/i.test(r.title+" "+r.extra+" "+r.artist)) s-=3;
+  return s;
+}
+
 const previewCache = {};
 async function findPreview(song){
   if(previewCache[song.id]) return previewCache[song.id];
-  const mainArtist = song.artist.split(/ & | feat\. /)[0];
-  const term = encodeURIComponent(mainArtist+" "+song.title.replace(/\(.*?\)/g,""));
-  const data = await jsonp(`https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=15&country=DE`);
-  const results = (data.results||[]).filter(r=>r.previewUrl);
-  const na = norm(mainArtist), nt = norm(song.title);
-  const score = r=>{
-    const ra = norm(r.artistName||""), rt = norm(r.trackName||"");
-    let s=0;
-    if(ra.includes(na)||na.includes(ra)) s+=3;
-    if(rt===nt) s+=4; else if(rt.startsWith(nt)||nt.startsWith(rt)) s+=2; else if(rt.includes(nt)) s+=1;
-    if(/karaoke|tribute|cover|instrumental|live|remix|made famous/i.test((r.trackName||"")+" "+(r.collectionName||"")+" "+(r.artistName||""))) s-=3;
-    return s;
-  };
-  results.sort((a,b)=>score(b)-score(a));
-  const best = results[0];
-  if(!best || score(best)<4) throw new Error("no match");
-  const p = {url:best.previewUrl, cover:(best.artworkUrl100||"").replace("100x100","300x300"), link:best.trackViewUrl||""};
-  previewCache[song.id]=p; return p;
+  const errors = [];
+  for(const src of SOURCES){
+    if((sourceDownUntil[src.name]||0) > Date.now()){ errors.push({src:src.name, kind:"down"}); continue; }
+    try{
+      const cands = await src.search(song);
+      cands.sort((a,b)=>scoreCandidate(song,b)-scoreCandidate(song,a));
+      const best = cands[0];
+      if(best && scoreCandidate(song,best)>=4){
+        delete sourceDownUntil[src.name];
+        const p = {url:best.url, cover:best.cover, link:best.link, src:src.name};
+        previewCache[song.id]=p; return p;
+      }
+      errors.push({src:src.name, kind:"nomatch"});
+    }catch(e){
+      sourceDownUntil[src.name] = Date.now() + 180000;
+      errors.push({src:src.name, kind:e.message==="timeout"?"timeout":"network"});
+    }
+  }
+  const err = new Error("no preview"); err.details = errors;
+  err.offline = errors.every(x=>x.kind!=="nomatch");
+  throw err;
 }
 
 /* ---------------- Spiel-Logik ---------------- */
@@ -346,6 +398,7 @@ function isCorrect(tl, gapIdx, year){
 
 async function drawSong(){
   ui.loading=true; ui.sel=null; render();
+  lastLoadErrors = [];
   for(let tries=0; tries<8; tries++){
     if(!S.deck.length){ S.deck = shuffle(SONGS.map(s=>s.id).filter(id=>!S.players.some(p=>p.cards.includes(id)||p.pending.includes(id)))); }
     const id = S.deck.pop();
@@ -354,10 +407,30 @@ async function drawSong(){
       S.song = id; ui.loading=false; ui.playing=false; ui.progress=0;
       audio.src = p.url; try{ audio.load(); }catch(e){}
       save(); render(); return;
-    }catch(e){ /* nächster Song */ }
+    }catch(e){
+      lastLoadErrors = e.details||[];
+      if(e.offline){ S.deck.splice(Math.floor(Math.random()*(S.deck.length+1)),0,id); break; } // Song nicht verbrennen
+      await new Promise(r=>setTimeout(r,250));  // kurz durchatmen, um nicht gedrosselt zu werden
+    }
   }
-  ui.loading=false; S.song=null; render();
-  toast("Keine Hörprobe erreichbar – Internetverbindung prüfen.");
+  ui.loading=false; S.song=null; save(); render();
+  toast(lastLoadErrors.length && lastLoadErrors.every(x=>x.kind!=="nomatch")
+    ? "Musikdienste nicht erreichbar – Internet oder Werbeblocker prüfen."
+    : "Keine passende Hörprobe gefunden – bitte nochmal versuchen.");
+}
+
+// Hörprobe lässt sich nicht abspielen (z. B. abgelaufener Link) -> kostenlos neuer Song
+audio.addEventListener("error",()=>{
+  if(!S || S.phase!=="listen" || ui.loading || !S.song || !audio.src) return;
+  delete previewCache[S.song];
+  toast("Hörprobe nicht abspielbar – neuer Song.");
+  S.song=null; drawSong();
+});
+
+function loadErrorHTML(){
+  if(!lastLoadErrors.length) return "";
+  const txt={network:"nicht erreichbar", timeout:"antwortet nicht", nomatch:"kein Treffer", down:"pausiert"};
+  return `<p class="center muted small">${lastLoadErrors.map(x=>esc(x.src)+": "+txt[x.kind]).join(" · ")}</p>`;
 }
 
 function startTurn(){
@@ -533,7 +606,7 @@ function render(){
       h += `<h2>${esc(p.name)} ist dran ${p.pending.length?`<span class="tag">Serie: ${p.pending.length} unsicher</span>`:""}</h2>`;
       if(ui.loading || !S.song){
         h += ui.loading ? `<div class="spinner"></div><p class="center muted">Song wird gesucht…</p>`
-                        : `<p class="center">Kein Song geladen.</p><button class="btn-primary full" data-act="retry">Nochmal versuchen</button>`;
+                        : `<p class="center">Kein Song geladen.</p>${loadErrorHTML()}<button class="btn-primary full" data-act="retry">Nochmal versuchen</button>`;
       } else {
         h += playerHTML();
         h += `<p class="center muted small">Hör zu und tippe dann die Lücke, in die der Song gehört.</p>`;
@@ -694,7 +767,7 @@ function bindGame(){
     if(t.dataset.bonus!==undefined) return bonus(t.dataset.bonus==="1");
     switch(t.dataset.act){
       case "start": startTurn(); break;
-      case "retry": drawSong(); break;
+      case "retry": for(const k in sourceDownUntil) delete sourceDownUntil[k]; drawSong(); break;
       case "place": confirmPlace(); break;
       case "skip": skipSong(); break;
       case "nochallenge": noChallenge(); break;
