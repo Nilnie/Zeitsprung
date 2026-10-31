@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Einfaches App-Symbol: Note auf violettem Grund -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#14112B"
+        android:pathData="M54,0a54,54 0,1 1,0 108a54,54 0,1 1,0 -108z" />
+    <path android:fillColor="#6C5CE7"
+        android:pathData="M54,10a44,44 0,1 1,0 88a44,44 0,1 1,0 -88z" />
+    <path android:fillColor="#FFB84D"
+        android:pathData="M46,30 L76,24 L76,68 A9,9 0,1 1,70 59.5 L70,36 L52,39.6 L52,74 A9,9 0,1 1,46 65.5 Z" />
+</vector>

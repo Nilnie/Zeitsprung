@@ -1,0 +1,40 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'de.nilnie.zeitsprung'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'de.nilnie.zeitsprung'
+        minSdk 24
+        targetSdk 34   // 34 statt 35: sonst zwingt Android 15 die App unter die Statusleiste
+        // Wird im GitHub-Workflow pro Build hochgezählt, damit Updates sich drüberinstallieren lassen.
+        versionCode = Integer.parseInt(System.getenv('VERSION_CODE') ?: '1')
+        versionName = "1.0." + (System.getenv('VERSION_CODE') ?: '1')
+    }
+
+    signingConfigs {
+        // Fester Schlüssel im Repo, damit jede neue APK als Update über die alte passt.
+        // Für ein privates Spiel reicht das; für den Play Store bräuchte es einen geheimen Schlüssel.
+        zeitsprung {
+            storeFile rootProject.file('zeitsprung.keystore')
+            storePassword 'zeitsprung'
+            keyAlias 'zeitsprung'
+            keyPassword 'zeitsprung'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.zeitsprung
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
