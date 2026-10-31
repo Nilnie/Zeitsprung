@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14112b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Zeitsprung – das Musik-Zeitleisten-Spiel</title>
+<style>
+  :root{
+    --bg:#14112b; --bg2:#1f1a45; --card:#2a2360; --text:#f4f1ff; --muted:#a9a2d6;
+    --accent:#ffb84d; --accent2:#ff5e8a; --ok:#3ddc97; --bad:#ff5e5e; --gap:#6c5ce7;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  #app{max-width:520px;margin:0 auto;min-height:100%;padding:16px 16px 40px}
+  h1{font-size:2rem;margin:.3em 0 .1em;letter-spacing:-.02em}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-size:1.35rem;margin:.6em 0 .4em}
+  p{line-height:1.45}
+  .muted{color:var(--muted)}
+  .small{font-size:.85rem}
+  button{font:inherit;border:0;border-radius:14px;padding:14px 18px;cursor:pointer;color:var(--text);background:var(--card)}
+  button:disabled{opacity:.4}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1030;font-weight:700}
+  .btn-ok{background:var(--ok);color:#06281a;font-weight:700}
+  .btn-bad{background:var(--bad);color:#2b0606;font-weight:700}
+  .btn-ghost{background:transparent;border:1px solid #4b4390}
+  .full{width:100%;display:block;margin:10px 0}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  input[type=text]{font:inherit;width:100%;padding:12px 14px;border-radius:12px;border:1px solid #4b4390;background:var(--bg2);color:var(--text)}
+  .panel{background:var(--bg2);border-radius:18px;padding:14px 16px;margin:12px 0}
+  .player-row{display:flex;gap:8px;margin:8px 0}
+  .player-row button{padding:10px 14px}
+  .seg{display:flex;background:var(--bg);border-radius:12px;padding:4px;gap:4px}
+  .seg button{flex:1;padding:10px 6px;background:transparent;font-size:.9rem}
+  .seg button.on{background:var(--card);font-weight:700}
+  .stepper{display:flex;align-items:center;gap:14px}
+  .stepper b{font-size:1.4rem;min-width:2ch;text-align:center}
+  .stepper button{padding:8px 16px;font-size:1.2rem}
+  .tokens{color:var(--accent);letter-spacing:2px}
+  .scoreboard{display:grid;grid-template-columns:1fr auto auto;gap:6px 12px;align-items:center}
+  .scoreboard .me{color:var(--accent);font-weight:700}
+  .bar{height:8px;border-radius:4px;background:var(--bg);overflow:hidden;grid-column:1/-1;margin-bottom:6px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  /* player */
+  .player{display:flex;flex-direction:column;align-items:center;margin:10px 0 6px}
+  .disc{width:150px;height:150px;border-radius:50%;position:relative;display:grid;place-items:center;
+    background:radial-gradient(circle,#0b0920 0 18%,#2a2360 19% 22%,#0b0920 23% 100%);box-shadow:0 0 0 6px var(--bg2)}
+  .disc.spin{animation:spin 2.4s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .disc svg{position:absolute;inset:-6px;width:162px;height:162px;transform:rotate(-90deg)}
+  .playbtn{width:76px;height:76px;border-radius:50%;padding:0;font-size:2rem;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1030;z-index:1}
+  /* timeline */
+  .timeline{margin:6px 0}
+  .tcard{background:var(--card);border-radius:14px;padding:10px 14px;display:flex;gap:12px;align-items:center}
+  .tcard .y{font-size:1.5rem;font-weight:800;min-width:3.2ch;color:var(--accent)}
+  .tcard .t{font-size:.85rem;line-height:1.25;color:var(--muted);overflow:hidden}
+  .tcard .t b{color:var(--text);font-weight:600}
+  .tcard.risky{outline:2px dashed var(--accent2);outline-offset:-2px}
+  .tcard.new{outline:2px solid var(--ok)}
+  .gap{display:block;width:100%;margin:6px 0;padding:8px;border-radius:12px;background:transparent;
+    border:2px dashed #3d3580;color:var(--muted);font-size:.85rem}
+  .gap.sel{border-color:var(--accent);background:rgba(255,184,77,.12);color:var(--accent);font-weight:700}
+  .gap.taken{border-color:var(--accent2);color:var(--accent2);border-style:solid}
+  .gap.ok{border-color:var(--ok);color:var(--ok);border-style:solid}
+  .center{text-align:center}
+  .big{font-size:3.4rem;font-weight:900;line-height:1;margin:.15em 0;color:var(--accent)}
+  .cover{width:160px;height:160px;border-radius:14px;object-fit:cover;background:var(--card);margin:6px auto;display:block}
+  .verdict{font-size:1.4rem;font-weight:800;margin:.4em 0}
+  .verdict.ok{color:var(--ok)} .verdict.bad{color:var(--bad)}
+  .spinner{width:44px;height:44px;border-radius:50%;border:4px solid var(--card);border-top-color:var(--accent);animation:spin 1s linear infinite;margin:24px auto}
+  .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--card);
+    padding:10px 16px;border-radius:12px;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:9}
+  .modal{position:fixed;inset:0;background:rgba(10,8,30,.82);display:grid;place-items:center;padding:20px;z-index:8}
+  .modal .panel{max-width:480px;width:100%;max-height:85vh;overflow:auto}
+  .rules li{margin:.4em 0;line-height:1.4}
+  .topbar{display:flex;justify-content:space-between;align-items:center}
+  .topbar button{padding:8px 12px;font-size:.85rem}
+  .tag{display:inline-block;font-size:.75rem;padding:3px 8px;border-radius:8px;background:var(--card);color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+/* =========================================================
+   Songliste: [Jahr, Interpret, Titel, Kategorie]
+   Kategorie: "i" = international, "d" = deutschsprachig / aus D-A-CH
+   Das Jahr ist das Jahr der Erstveröffentlichung des Songs.
+   ========================================================= */
+const SONGS = [
+ [1956,"Elvis Presley","Heartbreak Hotel","i"],
+ [1958,"Chuck Berry","Johnny B. Goode","i"],
+ [1961,"Ben E. King","Stand by Me","i"],
+ [1963,"The Beatles","She Loves You","i"],
+ [1964,"The Animals","The House of the Rising Sun","i"],
+ [1964,"The Kinks","You Really Got Me","i"],
+ [1965,"The Rolling Stones","(I Can't Get No) Satisfaction","i"],
+ [1966,"The Beach Boys","Good Vibrations","i"],
+ [1967,"Procol Harum","A Whiter Shade of Pale","i"],
+ [1967,"The Doors","Light My Fire","i"],
+ [1967,"Aretha Franklin","Respect","i"],
+ [1968,"The Beatles","Hey Jude","i"],
+ [1968,"Marvin Gaye","I Heard It Through the Grapevine","i"],
+ [1969,"Creedence Clearwater Revival","Bad Moon Rising","i"],
+ [1969,"The Beatles","Here Comes the Sun","i"],
+ [1970,"Simon & Garfunkel","Bridge over Troubled Water","i"],
+ [1970,"The Jackson 5","ABC","i"],
+ [1970,"Black Sabbath","Paranoid","i"],
+ [1971,"John Lennon","Imagine","i"],
+ [1971,"Marvin Gaye","What's Going On","i"],
+ [1971,"Don McLean","American Pie","i"],
+ [1972,"Elton John","Rocket Man","i"],
+ [1972,"Stevie Wonder","Superstition","i"],
+ [1973,"Pink Floyd","Money","i"],
+ [1974,"ABBA","Waterloo","i"],
+ [1974,"Carl Douglas","Kung Fu Fighting","i"],
+ [1974,"Udo Jürgens","Griechischer Wein","d"],
+ [1975,"Queen","Bohemian Rhapsody","i"],
+ [1975,"Bruce Springsteen","Born to Run","i"],
+ [1976,"ABBA","Dancing Queen","i"],
+ [1976,"Boney M.","Daddy Cool","i"],
+ [1977,"Fleetwood Mac","Dreams","i"],
+ [1977,"Bee Gees","Stayin' Alive","i"],
+ [1977,"Queen","We Will Rock You","i"],
+ [1977,"David Bowie","Heroes","i"],
+ [1978,"Village People","Y.M.C.A.","i"],
+ [1978,"Gloria Gaynor","I Will Survive","i"],
+ [1978,"Kate Bush","Wuthering Heights","i"],
+ [1978,"Toto","Hold the Line","i"],
+ [1979,"Pink Floyd","Another Brick in the Wall, Pt. 2","i"],
+ [1979,"The Buggles","Video Killed the Radio Star","i"],
+ [1979,"Dschinghis Khan","Dschinghis Khan","d"],
+ [1980,"AC/DC","Back in Black","i"],
+ [1980,"Queen","Another One Bites the Dust","i"],
+ [1981,"Kim Wilde","Kids in America","i"],
+ [1981,"Journey","Don't Stop Believin'","i"],
+ [1981,"Soft Cell","Tainted Love","i"],
+ [1981,"Spider Murphy Gang","Skandal im Sperrbezirk","d"],
+ [1982,"Survivor","Eye of the Tiger","i"],
+ [1982,"Trio","Da Da Da","d"],
+ [1982,"Nicole","Ein bißchen Frieden","d"],
+ [1983,"Nena","99 Luftballons","d"],
+ [1983,"Peter Schilling","Major Tom (Völlig losgelöst)","d"],
+ [1983,"Eurythmics","Sweet Dreams (Are Made of This)","i"],
+ [1983,"Cyndi Lauper","Girls Just Want to Have Fun","i"],
+ [1983,"The Police","Every Breath You Take","i"],
+ [1984,"Wham!","Wake Me Up Before You Go-Go","i"],
+ [1984,"Prince","When Doves Cry","i"],
+ [1984,"Bruce Springsteen","Dancing in the Dark","i"],
+ [1984,"Herbert Grönemeyer","Männer","d"],
+ [1984,"Modern Talking","You're My Heart, You're My Soul","d"],
+ [1985,"a-ha","Take On Me","i"],
+ [1985,"Falco","Rock Me Amadeus","d"],
+ [1985,"Dire Straits","Money for Nothing","i"],
+ [1985,"Kate Bush","Running Up That Hill","i"],
+ [1986,"Bon Jovi","Livin' on a Prayer","i"],
+ [1986,"Europe","The Final Countdown","i"],
+ [1987,"Rick Astley","Never Gonna Give You Up","i"],
+ [1987,"Whitney Houston","I Wanna Dance with Somebody","i"],
+ [1987,"Michael Jackson","Bad","i"],
+ [1988,"Tracy Chapman","Fast Car","i"],
+ [1989,"Madonna","Like a Prayer","i"],
+ [1989,"Roxette","The Look","i"],
+ [1990,"Sinéad O'Connor","Nothing Compares 2 U","i"],
+ [1990,"MC Hammer","U Can't Touch This","i"],
+ [1990,"Vanilla Ice","Ice Ice Baby","i"],
+ [1990,"Snap!","The Power","d"],
+ [1991,"Nirvana","Smells Like Teen Spirit","i"],
+ [1991,"R.E.M.","Losing My Religion","i"],
+ [1991,"Bryan Adams","(Everything I Do) I Do It for You","i"],
+ [1991,"Die Prinzen","Millionär","d"],
+ [1992,"Whitney Houston","I Will Always Love You","i"],
+ [1992,"Snap!","Rhythm Is a Dancer","d"],
+ [1992,"Die Fantastischen Vier","Die Da!?!","d"],
+ [1992,"Dr. Alban","It's My Life","i"],
+ [1993,"4 Non Blondes","What's Up?","i"],
+ [1993,"Haddaway","What Is Love","d"],
+ [1994,"The Cranberries","Zombie","i"],
+ [1994,"Scooter","Hyper Hyper","d"],
+ [1995,"Oasis","Wonderwall","i"],
+ [1995,"Coolio","Gangsta's Paradise","i"],
+ [1995,"Alanis Morissette","You Oughta Know","i"],
+ [1996,"Spice Girls","Wannabe","i"],
+ [1996,"Fugees","Killing Me Softly","i"],
+ [1997,"Aqua","Barbie Girl","i"],
+ [1997,"Hanson","MMMBop","i"],
+ [1997,"The Verve","Bitter Sweet Symphony","i"],
+ [1997,"Rammstein","Du hast","d"],
+ [1998,"Britney Spears","...Baby One More Time","i"],
+ [1998,"Cher","Believe","i"],
+ [1999,"Lou Bega","Mambo No. 5","d"],
+ [1999,"Ricky Martin","Livin' la Vida Loca","i"],
+ [2000,"Eminem","The Real Slim Shady","i"],
+ [2000,"Modjo","Lady (Hear Me Tonight)","i"],
+ [2000,"Daft Punk","One More Time","i"],
+ [2000,"Robbie Williams","Rock DJ","i"],
+ [2001,"Kylie Minogue","Can't Get You Out of My Head","i"],
+ [2002,"Eminem","Lose Yourself","i"],
+ [2002,"Avril Lavigne","Complicated","i"],
+ [2003,"OutKast","Hey Ya!","i"],
+ [2003,"Beyoncé","Crazy in Love","i"],
+ [2003,"50 Cent","In da Club","i"],
+ [2003,"Wir sind Helden","Guten Tag","d"],
+ [2004,"Usher","Yeah!","i"],
+ [2004,"Green Day","American Idiot","i"],
+ [2004,"Juli","Perfekte Welle","d"],
+ [2005,"Gorillaz","Feel Good Inc.","i"],
+ [2006,"Gnarls Barkley","Crazy","i"],
+ [2006,"Nelly Furtado","Maneater","i"],
+ [2006,"Amy Winehouse","Rehab","i"],
+ [2007,"Rihanna","Umbrella","i"],
+ [2008,"Katy Perry","I Kissed a Girl","i"],
+ [2008,"Coldplay","Viva la Vida","i"],
+ [2008,"Kings of Leon","Sex on Fire","i"],
+ [2008,"Peter Fox","Haus am See","d"],
+ [2009,"Black Eyed Peas","I Gotta Feeling","i"],
+ [2010,"Shakira","Waka Waka (This Time for Africa)","i"],
+ [2010,"Bruno Mars","Just the Way You Are","i"],
+ [2011,"Adele","Someone Like You","i"],
+ [2011,"Gotye","Somebody That I Used to Know","i"],
+ [2011,"LMFAO","Party Rock Anthem","i"],
+ [2012,"PSY","Gangnam Style","i"],
+ [2012,"Macklemore & Ryan Lewis","Thrift Shop","i"],
+ [2012,"Die Toten Hosen","Tage wie diese","d"],
+ [2013,"Pharrell Williams","Happy","i"],
+ [2013,"Daft Punk","Get Lucky","i"],
+ [2013,"Helene Fischer","Atemlos durch die Nacht","d"],
+ [2014,"Mark Ronson","Uptown Funk","i"],
+ [2014,"Taylor Swift","Shake It Off","i"],
+ [2014,"Andreas Bourani","Auf uns","d"],
+ [2014,"Robin Schulz","Prayer in C","d"],
+ [2015,"Adele","Hello","i"],
+ [2015,"Justin Bieber","Sorry","i"],
+ [2015,"Felix Jaehn","Ain't Nobody (Loves Me Better)","d"],
+ [2016,"Sia","Cheap Thrills","i"],
+ [2016,"Drake","One Dance","i"],
+ [2016,"Mark Forster","Chöre","d"],
+ [2017,"Ed Sheeran","Shape of You","i"],
+ [2017,"Luis Fonsi","Despacito","i"],
+ [2017,"Imagine Dragons","Believer","i"],
+ [2018,"Lady Gaga & Bradley Cooper","Shallow","i"],
+ [2018,"Ariana Grande","thank u, next","i"],
+ [2019,"Billie Eilish","bad guy","i"],
+ [2019,"The Weeknd","Blinding Lights","i"],
+ [2019,"Tones and I","Dance Monkey","i"],
+ [2020,"Dua Lipa","Levitating","i"],
+ [2021,"Olivia Rodrigo","drivers license","i"],
+ [2022,"Harry Styles","As It Was","i"],
+ [2022,"Taylor Swift","Anti-Hero","i"],
+ [2022,"Nina Chuba","Wildberry Lillet","d"],
+ [2023,"Miley Cyrus","Flowers","i"],
+ [2023,"Doja Cat","Paint the Town Red","i"],
+ [2024,"Sabrina Carpenter","Espresso","i"],
+ [2024,"Billie Eilish","BIRDS OF A FEATHER","i"],
+ [2024,"Lady Gaga & Bruno Mars","Die with a Smile","i"],
+ [2025,"Alex Warren","Ordinary","i"]
+].map((s,i)=>({id:i,year:s[0],artist:s[1],title:s[2],cat:s[3]}));
+
+const START_TOKENS = 2, MAX_TOKENS = 5, STORE_KEY = "zeitsprung-v1";
+
+/* ---------------- Zustand ---------------- */
+let S = null;          // Spielzustand (wird gespeichert)
+let setup = {names:["",""], target:10, cats:"all"};
+let audio = new Audio();
+audio.preload = "auto";
+let ui = {loading:false, playing:false, progress:0, sel:null, modal:null};
+
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(S)); }catch(e){} }
+function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)||"null"); }catch(e){ return null; } }
+function clearSave(){ try{ localStorage.removeItem(STORE_KEY); }catch(e){} }
+
+const shuffle = a => { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = sel => document.querySelector(sel);
+const cur = () => S.players[S.turn];
+const songById = id => SONGS[id];
+
+function toast(msg){
+  const t=document.createElement("div"); t.className="toast"; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(),2600);
+}
+
+/* ---------------- iTunes-Hörproben (JSONP, kein Login) ---------------- */
+let jsonpN = 0;
+function jsonp(url){
+  return new Promise((res,rej)=>{
+    const cb = "__zs_cb"+(jsonpN++);
+    const sc = document.createElement("script");
+    const timer = setTimeout(()=>{cleanup();rej(new Error("timeout"));},9000);
+    function cleanup(){ clearTimeout(timer); delete window[cb]; sc.remove(); }
+    window[cb] = data=>{cleanup();res(data);};
+    sc.onerror = ()=>{cleanup();rej(new Error("network"));};
+    sc.src = url + (url.includes("?")?"&":"?") + "callback=" + cb;
+    document.head.appendChild(sc);
+  });
+}
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\(.*?\)|\[.*?\]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+const previewCache = {};
+async function findPreview(song){
+  if(previewCache[song.id]) return previewCache[song.id];
+  const mainArtist = song.artist.split(/ & | feat\. /)[0];
+  const term = encodeURIComponent(mainArtist+" "+song.title.replace(/\(.*?\)/g,""));
+  const data = await jsonp(`https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=15&country=DE`);
+  const results = (data.results||[]).filter(r=>r.previewUrl);
+  const na = norm(mainArtist), nt = norm(song.title);
+  const score = r=>{
+    const ra = norm(r.artistName||""), rt = norm(r.trackName||"");
+    let s=0;
+    if(ra.includes(na)||na.includes(ra)) s+=3;
+    if(rt===nt) s+=4; else if(rt.startsWith(nt)||nt.startsWith(rt)) s+=2; else if(rt.includes(nt)) s+=1;
+    if(/karaoke|tribute|cover|instrumental|live|remix|made famous/i.test((r.trackName||"")+" "+(r.collectionName||"")+" "+(r.artistName||""))) s-=3;
+    return s;
+  };
+  results.sort((a,b)=>score(b)-score(a));
+  const best = results[0];
+  if(!best || score(best)<4) throw new Error("no match");
+  const p = {url:best.previewUrl, cover:(best.artworkUrl100||"").replace("100x100","300x300"), link:best.trackViewUrl||""};
+  previewCache[song.id]=p; return p;
+}
+
+/* ---------------- Spiel-Logik ---------------- */
+function newGame(){
+  const names = setup.names.map(n=>n.trim()).filter(Boolean);
+  let pool = SONGS.filter(s=> setup.cats==="all" || s.cat===setup.cats).map(s=>s.id);
+  shuffle(pool);
+  const players = names.map(n=>({name:n, tokens:START_TOKENS, cards:[pool.pop()], pending:[]}));
+  players.forEach(p=>p.cards.sort((a,b)=>songById(a).year-songById(b).year));
+  S = {players, turn:Math.floor(Math.random()*players.length), deck:pool, target:setup.target,
+       phase:"handover", song:null, placed:null, challenger:null, chPlaced:null, result:null, round:1};
+  save(); render();
+}
+
+function timelineOf(p){ // inkl. unsicherer Karten dieser Serie
+  return [...p.cards, ...p.pending].sort((a,b)=>songById(a).year-songById(b).year);
+}
+function isCorrect(tl, gapIdx, year){
+  const before = gapIdx>0 ? songById(tl[gapIdx-1]).year : -Infinity;
+  const after = gapIdx<tl.length ? songById(tl[gapIdx]).year : Infinity;
+  return before<=year && year<=after;
+}
+
+async function drawSong(){
+  ui.loading=true; ui.sel=null; render();
+  for(let tries=0; tries<8; tries++){
+    if(!S.deck.length){ S.deck = shuffle(SONGS.map(s=>s.id).filter(id=>!S.players.some(p=>p.cards.includes(id)||p.pending.includes(id)))); }
+    const id = S.deck.pop();
+    try{
+      const p = await findPreview(songById(id));
+      S.song = id; ui.loading=false; ui.playing=false; ui.progress=0;
+      audio.src = p.url; try{ audio.load(); }catch(e){}
+      save(); render(); return;
+    }catch(e){ /* nächster Song */ }
+  }
+  ui.loading=false; S.song=null; render();
+  toast("Keine Hörprobe erreichbar – Internetverbindung prüfen.");
+}
+
+function startTurn(){
+  S.phase="listen"; S.placed=null; S.challenger=null; S.chPlaced=null; S.result=null;
+  save(); drawSong();
+}
+
+function togglePlay(){
+  if(!S.song) return;
+  if(audio.paused){
+    const pr = audio.play();
+    if(pr && pr.catch) pr.catch(()=>toast("Abspielen blockiert – bitte nochmal tippen."));
+  } else audio.pause();
+}
+audio.addEventListener("play",()=>{ui.playing=true;updatePlayer();});
+audio.addEventListener("pause",()=>{ui.playing=false;updatePlayer();});
+audio.addEventListener("ended",()=>{ui.playing=false;ui.progress=1;updatePlayer();});
+audio.addEventListener("timeupdate",()=>{ui.progress=audio.duration?audio.currentTime/audio.duration:0;updatePlayer();});
+function stopAudio(){ try{audio.pause();}catch(e){} }
+
+function skipSong(){
+  if(cur().tokens<1) return;
+  cur().tokens--; stopAudio(); toast("1 Note bezahlt – neuer Song!"); drawSong();
+}
+
+function confirmPlace(){
+  if(ui.sel===null) return;
+  S.placed = ui.sel; ui.sel=null;
+  const others = S.players.filter((p,i)=>i!==S.turn && p.tokens>0);
+  S.phase = others.length ? "challenge" : "reveal";
+  if(S.phase==="reveal") resolve();
+  save(); render();
+}
+function pickChallenger(i){ S.challenger=i; S.phase="chplace"; ui.sel=null; save(); render(); }
+function confirmChallenge(){
+  if(ui.sel===null||ui.sel===S.placed) return;
+  S.chPlaced = ui.sel; ui.sel=null;
+  S.players[S.challenger].tokens--;
+  resolve(); save(); render();
+}
+function noChallenge(){ resolve(); save(); render(); }
+
+function resolve(){
+  const p = cur(), song = songById(S.song), tl = timelineOf(p);
+  const ok = isCorrect(tl, S.placed, song.year);
+  let chOk = false;
+  if(S.challenger!==null && S.chPlaced!==null) chOk = isCorrect(tl, S.chPlaced, song.year);
+  const correctGaps = tl.map((_,i)=>i).concat([tl.length]).filter(i=>isCorrect(tl,i,song.year));
+  S.result = {ok, chOk, correctGaps, lost:0, stolen:false, tl:tl.slice(), pend:p.pending.slice()};
+  if(ok){
+    p.pending.push(S.song);
+  } else {
+    S.result.lost = p.pending.length;
+    p.pending = [];
+    if(chOk){
+      const c = S.players[S.challenger];
+      c.cards.push(S.song); c.cards.sort((a,b)=>songById(a).year-songById(b).year);
+      S.result.stolen = true;
+    }
+  }
+  S.phase="reveal"; S.bonusAsked=false;
+  stopAudio();
+}
+
+function bonus(yes){
+  if(yes){ const p=cur(); if(p.tokens<MAX_TOKENS){p.tokens++; toast("+1 Note für "+p.name+"!");} else toast("Schon "+MAX_TOKENS+" Noten – Maximum erreicht."); }
+  S.bonusAsked=true; save(); render();
+}
+
+function secureCards(){
+  const p = cur();
+  p.cards.push(...p.pending); p.pending=[];
+  p.cards.sort((a,b)=>songById(a).year-songById(b).year);
+}
+function checkWin(){
+  const w = S.players.find(p=>p.cards.length>=S.target);
+  if(w){ S.phase="win"; S.winner=S.players.indexOf(w); save(); render(); return true; }
+  return false;
+}
+function continueStreak(){ // Serie: nochmal ziehen, unsichere Karten bleiben im Risiko
+  if(cur().cards.length+cur().pending.length>=S.target){ secureCards(); if(checkWin()) return; }
+  startTurn();
+}
+function endTurn(){
+  secureCards();
+  if(checkWin()) return;
+  S.turn = (S.turn+1)%S.players.length;
+  if(S.turn===0) S.round++;
+  S.phase="handover"; S.song=null; save(); render();
+}
+
+/* ---------------- Darstellung ---------------- */
+function scoreboard(){
+  return `<div class="panel scoreboard">${S.players.map((p,i)=>{
+    const n = p.cards.length, pend = p.pending.length;
+    return `<div class="${i===S.turn?'me':''}">${esc(p.name)}</div>
+      <div class="tokens" title="Noten">${"♪".repeat(p.tokens)||"–"}</div>
+      <div><b>${n}</b>${pend?`<span class="muted">+${pend}</span>`:""}<span class="muted">/${S.target}</span></div>
+      <div class="bar"><i style="width:${Math.min(100,n/S.target*100)}%"></i></div>`;}).join("")}</div>`;
+}
+
+function timelineHTML(p, opts={}){
+  const tl = timelineOf(p);
+  const gapBtn = i=>{
+    if(!opts.interactive && !opts.marks) return "";
+    let cls="gap", label="Hier einordnen";
+    if(opts.marks){
+      if(opts.marks.placed===i) {cls+=" taken"; label="← "+esc(p.name)+" hat hier eingeordnet";}
+      if(opts.marks.ch===i) {cls+=" taken"; label="← Einspruch: hier";}
+      if(opts.marks.correct && opts.marks.correct.includes(i) && opts.marks.placed!==i && opts.marks.ch!==i) {cls+=" ok"; label="✓ hier wäre richtig gewesen";}
+      if(opts.marks.correct && opts.marks.correct.includes(i) && (opts.marks.placed===i||opts.marks.ch===i)) cls=cls.replace("taken","ok");
+      if(cls==="gap" && !opts.interactive) return "";
+    }
+    if(opts.interactive){
+      if(opts.blocked===i) return `<button class="gap taken" disabled>bereits gewählt</button>`;
+      if(ui.sel===i){cls+=" sel"; label="★ hier!";}
+      return `<button class="${cls}" data-gap="${i}">${label}</button>`;
+    }
+    return `<div class="${cls}">${label}</div>`;
+  };
+  let h = `<div class="timeline">`;
+  if(!opts.interactive && !opts.marks) h+="";
+  tl.forEach((id,i)=>{
+    h += gapBtn(i);
+    const s = songById(id), risky = p.pending.includes(id);
+    const isNew = opts.highlight===id;
+    h += `<div class="tcard ${risky&&!isNew?'risky':''} ${isNew?'new':''}"><div class="y">${s.year}</div>
+      <div class="t"><b>${esc(s.title)}</b><br>${esc(s.artist)}${risky?' · <span style="color:var(--accent2)">unsicher</span>':''}</div></div>`;
+  });
+  h += gapBtn(tl.length) + `</div>`;
+  return h;
+}
+
+function playerHTML(){
+  const C = 2*Math.PI*76, off = C*(1-ui.progress);
+  return `<div class="player">
+    <div class="disc ${ui.playing?'spin':''}" id="disc">
+      <svg viewBox="0 0 162 162"><circle cx="81" cy="81" r="76" fill="none" stroke="#2a2360" stroke-width="6"/>
+      <circle id="ring" cx="81" cy="81" r="76" fill="none" stroke="url(#g)" stroke-width="6" stroke-linecap="round"
+        stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
+      <defs><linearGradient id="g"><stop offset="0" stop-color="#ffb84d"/><stop offset="1" stop-color="#ff5e8a"/></linearGradient></defs></svg>
+      <button class="playbtn" id="play" aria-label="Abspielen">${ui.playing?"❚❚":"▶"}</button>
+    </div></div>`;
+}
+function updatePlayer(){
+  const b=$("#play"), r=$("#ring"), d=$("#disc");
+  if(!b) return;
+  b.textContent = ui.playing?"❚❚":"▶";
+  d.classList.toggle("spin",ui.playing);
+  const C = 2*Math.PI*76; r.setAttribute("stroke-dashoffset", C*(1-ui.progress));
+}
+
+function topbar(){
+  return `<div class="topbar"><span class="tag">Runde ${S.round}</span>
+    <div><button class="btn-ghost" data-act="rules">Regeln</button>
+    <button class="btn-ghost" data-act="menu">Menü</button></div></div>`;
+}
+
+function render(){
+  const app = $("#app");
+  if(!S){ app.innerHTML = setupHTML(); bindSetup(); return renderModal(); }
+  const p = cur();
+  let h = topbar();
+  switch(S.phase){
+    case "handover":
+      h += `<div class="center" style="margin-top:8vh">
+        <div style="font-size:3rem">📱</div>
+        <h2>Gib das Handy an</h2><div class="big" style="font-size:2.6rem">${esc(p.name)}</div>
+        <p class="muted">Alle hören mit – aber nur ${esc(p.name)} entscheidet, wo der Song hingehört.</p>
+        <button class="btn-primary full" data-act="start">Ich bin ${esc(p.name)} – los!</button></div>` + scoreboard();
+      break;
+    case "listen":
+      h += `<h2>${esc(p.name)} ist dran ${p.pending.length?`<span class="tag">Serie: ${p.pending.length} unsicher</span>`:""}</h2>`;
+      if(ui.loading || !S.song){
+        h += ui.loading ? `<div class="spinner"></div><p class="center muted">Song wird gesucht…</p>`
+                        : `<p class="center">Kein Song geladen.</p><button class="btn-primary full" data-act="retry">Nochmal versuchen</button>`;
+      } else {
+        h += playerHTML();
+        h += `<p class="center muted small">Hör zu und tippe dann die Lücke, in die der Song gehört.</p>`;
+        h += timelineHTML(p,{interactive:true});
+        h += `<button class="btn-primary full" data-act="place" ${ui.sel===null?"disabled":""}>Einordnen</button>`;
+        h += `<button class="btn-ghost full" data-act="skip" ${p.tokens<1?"disabled":""}>Song überspringen (1 ♪)</button>`;
+      }
+      break;
+    case "challenge":
+      const others = S.players.map((q,i)=>({q,i})).filter(o=>o.i!==S.turn && o.q.tokens>0);
+      h += `<h2>Einspruch?</h2><p>${esc(p.name)} hat eingeordnet. Wer glaubt es besser zu wissen? Ein Einspruch kostet <b>1 ♪</b>. Liegt ${esc(p.name)} falsch und du richtig, bekommst <b>du</b> die Karte.</p>`;
+      h += others.map(o=>`<button class="full" data-ch="${o.i}">${esc(o.q.name)} widerspricht <span class="tokens">${"♪".repeat(o.q.tokens)}</span></button>`).join("");
+      h += `<button class="btn-primary full" data-act="nochallenge">Kein Einspruch – auflösen!</button>`;
+      h += playerHTML();
+      h += timelineHTML(p,{marks:{placed:S.placed}});
+      break;
+    case "chplace":
+      const c = S.players[S.challenger];
+      h += `<h2>${esc(c.name)} widerspricht!</h2><p class="muted">Wähle eine <b>andere</b> Lücke in der Zeitleiste von ${esc(p.name)}.</p>`;
+      h += playerHTML();
+      h += timelineHTML(p,{interactive:true, blocked:S.placed});
+      h += `<button class="btn-primary full" data-act="chconfirm" ${ui.sel===null?"disabled":""}>Einspruch abgeben</button>`;
+      h += `<button class="btn-ghost full" data-act="chcancel">Doch kein Einspruch</button>`;
+      break;
+    case "reveal":{
+      const s = songById(S.song), r = S.result, pv = previewCache[S.song]||{};
+      h += `<div class="center">
+        ${pv.cover?`<img class="cover" src="${esc(pv.cover)}" alt="">`:""}
+        <div class="big">${s.year}</div>
+        <div style="font-size:1.15rem;font-weight:700">${esc(s.title)}</div>
+        <div class="muted">${esc(s.artist)}</div>`;
+      if(r.ok) h += `<div class="verdict ok">Richtig, ${esc(p.name)}! 🎉</div>`;
+      else {
+        h += `<div class="verdict bad">Leider falsch.</div>`;
+        if(r.lost) h += `<p>Die Serie ist geplatzt – ${r.lost} unsichere Karte${r.lost>1?"n":""} ${r.lost>1?"sind":"ist"} weg.</p>`;
+        if(r.stolen) h += `<p><b>${esc(S.players[S.challenger].name)}</b> hatte recht und schnappt sich die Karte!</p>`;
+        else if(S.challenger!==null) h += `<p class="muted">Der Einspruch von ${esc(S.players[S.challenger].name)} lag auch daneben.</p>`;
+      }
+      if(r.ok && S.challenger!==null) h += `<p class="muted">Der Einspruch von ${esc(S.players[S.challenger].name)} war umsonst.</p>`;
+      h += `</div>`;
+      if(!S.bonusAsked){
+        h += `<div class="panel center"><b>Bonus-Frage:</b><br>Hat ${esc(p.name)} vorher Interpret <i>und</i> Titel richtig genannt?
+          <div class="row" style="margin-top:10px"><button class="btn-ok" data-bonus="1">Ja, +1 ♪</button><button data-bonus="0">Nein</button></div></div>`;
+      } else if(r.ok && p.cards.length+p.pending.length>=S.target){
+        h += `<button class="btn-primary full" data-act="end">Karten sichern – das reicht zum Sieg! 🏆</button>`;
+      } else if(r.ok){
+        h += `<div class="panel"><b>Serie riskieren?</b><p class="small muted" style="margin:.3em 0 .6em">
+          Du darfst sofort den nächsten Song ziehen. Liegst du dann falsch, verlierst du <b>alle</b> unsicheren Karten dieser Runde (${p.pending.length}).
+          Wenn du aufhörst, sind sie sicher.</p>
+          <button class="btn-primary full" data-act="streak">Noch ein Song! 🔥</button>
+          <button class="btn-ok full" data-act="end">Sichern & Handy weitergeben</button></div>`;
+      } else {
+        h += `<button class="btn-primary full" data-act="end">Handy weitergeben</button>`;
+      }
+      h += `<h2 class="small muted">Zeitleiste von ${esc(p.name)}</h2>`;
+      // Zeitleiste vor dem Einfügen zeigen, mit Markierungen
+      const shown = {name:p.name, cards:r.tl.filter(id=>!r.pend.includes(id)), pending:r.pend};
+      h += timelineHTML(shown,{marks:{placed:S.placed, ch:S.chPlaced, correct:r.correctGaps}});
+      break;}
+    case "win":{
+      const w = S.players[S.winner];
+      h += `<div class="center" style="margin-top:6vh"><div style="font-size:3.4rem">🏆</div>
+        <div class="big">${esc(w.name)}</div><h2>gewinnt mit ${w.cards.length} Karten!</h2></div>` + scoreboard()
+        + `<button class="btn-primary full" data-act="again">Neue Runde, gleiche Spieler</button>
+           <button class="btn-ghost full" data-act="quit">Zurück zum Start</button>
+           <h2 class="small muted">Zeitleiste von ${esc(w.name)}</h2>` + timelineHTML(w);
+      break;}
+  }
+  app.innerHTML = h;
+  bindGame();
+  renderModal();
+}
+
+function setupHTML(){
+  const saved = load();
+  return `<h1><span>Zeitsprung</span></h1>
+  <p class="muted">Das Musik-Zeitleisten-Spiel für ein Handy. Hör rein, ordne ein, bau deine Zeitleiste.</p>
+  ${saved && saved.phase!=="win" ? `<button class="btn-primary full" data-act="resume">Letztes Spiel fortsetzen</button>`:""}
+  <div class="panel"><h2 style="margin-top:0">Spieler oder Teams</h2>
+    <div id="names">${setup.names.map((n,i)=>`<div class="player-row"><input type="text" maxlength="16" placeholder="Name ${i+1}" value="${esc(n)}" data-name="${i}">
+      ${setup.names.length>2?`<button data-del="${i}" aria-label="Entfernen">✕</button>`:""}</div>`).join("")}</div>
+    ${setup.names.length<8?`<button class="btn-ghost full" data-act="add">+ Spieler hinzufügen</button>`:""}
+  </div>
+  <div class="panel"><h2 style="margin-top:0">Karten zum Sieg</h2>
+    <div class="stepper"><button data-act="minus">–</button><b>${setup.target}</b><button data-act="plus">+</button>
+    <span class="muted small">${setup.target<=6?"kurz":setup.target<=10?"normal":"lang"}</span></div></div>
+  <div class="panel"><h2 style="margin-top:0">Songs</h2>
+    <div class="seg">${[["all","Gemischt"],["i","International"],["d","Deutsch & D-A-CH"]].map(([k,l])=>`<button class="${setup.cats===k?'on':''}" data-cat="${k}">${l}</button>`).join("")}</div>
+    <p class="small muted" style="margin-bottom:0">${SONGS.length} Songs von ${SONGS[0].year} bis ${SONGS[SONGS.length-1].year}. Hörproben kommen von Apple Music (30 Sek., kein Konto nötig).</p></div>
+  <button class="btn-primary full" data-act="newgame">Spiel starten</button>
+  <button class="btn-ghost full" data-act="rules">Spielregeln</button>`;
+}
+
+function rulesHTML(){
+  return `<h2 style="margin-top:0">So geht Zeitsprung</h2><ol class="rules">
+  <li><b>Start:</b> Jede Person bekommt eine aufgedeckte Startkarte und <b>${START_TOKENS} Noten (♪)</b>.</li>
+  <li><b>Hören:</b> Wer dran ist, spielt die 30-Sekunden-Hörprobe ab. Titel und Jahr bleiben geheim.</li>
+  <li><b>Einordnen:</b> Tippe die Lücke in deiner Zeitleiste, in die der Song zeitlich gehört (gleiches Jahr zählt als richtig).</li>
+  <li><b>Einspruch:</b> Andere können für 1 ♪ widersprechen und eine andere Lücke wählen. Liegst du falsch und sie richtig, bekommen sie die Karte.</li>
+  <li><b>Bonus:</b> Nennst du vor dem Auflösen Interpret <i>und</i> Titel laut, gibt es +1 ♪ (max. ${MAX_TOKENS}). Die Gruppe entscheidet.</li>
+  <li><b>Serie:</b> Nach einer richtigen Karte darfst du weiterspielen. Aber Achtung: Ein Fehler, und alle unsicheren Karten dieser Serie sind weg.</li>
+  <li><b>Überspringen:</b> Song unbekannt? Für 1 ♪ gibt es einen neuen.</li>
+  <li><b>Sieg:</b> Wer zuerst die eingestellte Anzahl Karten sicher hat, gewinnt.</li></ol>
+  <p class="small muted">Tipp: Handy an eine Bluetooth-Box koppeln, dann hört die ganze Runde mit.</p>
+  <button class="btn-primary full" data-act="close">Verstanden</button>`;
+}
+function menuHTML(){
+  return `<h2 style="margin-top:0">Menü</h2>
+   <button class="full" data-act="close">Weiterspielen</button>
+   <button class="full" data-act="rules">Spielregeln</button>
+   <button class="btn-bad full" data-act="quit">Spiel beenden</button>`;
+}
+function renderModal(){
+  let m = document.querySelector(".modal"); if(m) m.remove();
+  if(!ui.modal) return;
+  m = document.createElement("div"); m.className="modal";
+  m.innerHTML = `<div class="panel">${ui.modal==="rules"?rulesHTML():menuHTML()}</div>`;
+  m.addEventListener("click",e=>{
+    if(e.target===m){ui.modal=null;renderModal();return;}
+    const a = e.target.closest("[data-act]"); if(!a) return;
+    const act=a.dataset.act;
+    if(act==="close"){ui.modal=null;}
+    else if(act==="rules"){ui.modal="rules";}
+    else if(act==="quit"){ui.modal=null; stopAudio(); clearSave(); S=null; render(); return;}
+    renderModal();
+  });
+  document.body.appendChild(m);
+}
+
+function bindSetup(){
+  const app=$("#app");
+  app.querySelectorAll("[data-name]").forEach(inp=>inp.addEventListener("input",e=>{setup.names[+e.target.dataset.name]=e.target.value;}));
+  app.onclick = e=>{
+    const t = e.target.closest("button"); if(!t) return;
+    if(t.dataset.del!==undefined){ setup.names.splice(+t.dataset.del,1); return render(); }
+    if(t.dataset.cat){ setup.cats=t.dataset.cat; return render(); }
+    switch(t.dataset.act){
+      case "add": setup.names.push(""); render(); app.querySelector(`[data-name="${setup.names.length-1}"]`).focus(); break;
+      case "minus": setup.target=Math.max(4,setup.target-1); render(); break;
+      case "plus": setup.target=Math.min(20,setup.target+1); render(); break;
+      case "rules": ui.modal="rules"; renderModal(); break;
+      case "resume": S=load(); if(S.phase==="listen"||S.phase==="challenge"||S.phase==="chplace"){ if(S.phase!=="listen"){S.phase="listen";} S.placed=null; S.challenger=null; drawSong(); } else render(); break;
+      case "newgame":
+        const n = setup.names.map(x=>x.trim()).filter(Boolean);
+        if(n.length<2){ toast("Bitte mindestens zwei Namen eintragen."); return; }
+        if(new Set(n.map(x=>x.toLowerCase())).size!==n.length){ toast("Bitte unterschiedliche Namen verwenden."); return; }
+        newGame(); break;
+    }
+  };
+}
+function bindGame(){
+  const app=$("#app");
+  app.onclick = e=>{
+    const t = e.target.closest("button"); if(!t) return;
+    if(t.id==="play") return togglePlay();
+    if(t.dataset.gap!==undefined){ ui.sel=+t.dataset.gap; return render(); }
+    if(t.dataset.ch!==undefined) return pickChallenger(+t.dataset.ch);
+    if(t.dataset.bonus!==undefined) return bonus(t.dataset.bonus==="1");
+    switch(t.dataset.act){
+      case "start": startTurn(); break;
+      case "retry": drawSong(); break;
+      case "place": confirmPlace(); break;
+      case "skip": skipSong(); break;
+      case "nochallenge": noChallenge(); break;
+      case "chconfirm": confirmChallenge(); break;
+      case "chcancel": S.challenger=null; S.phase="challenge"; ui.sel=null; render(); break;
+      case "streak": continueStreak(); break;
+      case "end": endTurn(); break;
+      case "rules": ui.modal="rules"; renderModal(); break;
+      case "menu": ui.modal="menu"; renderModal(); break;
+      case "again": { const names=S.players.map(p=>p.name); setup.names=names; setup.target=S.target; newGame(); break; }
+      case "quit": clearSave(); S=null; render(); break;
+    }
+  };
+}
+
+// Vorherigen Spielernamen merken
+try{ const last=load(); if(last&&last.players){ setup.names=last.players.map(p=>p.name); setup.target=last.target||10; } }catch(e){}
+render();
+</script>
+</body>
+</html>
